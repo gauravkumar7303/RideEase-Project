@@ -376,6 +376,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { 
   FaUser, 
   FaIdCard, 
@@ -395,13 +396,17 @@ import {
   FaDownload
 } from 'react-icons/fa'
 import { toast } from 'react-toastify'
+import { getCurrentUser, isAuthenticated } from '@/Src/utils/auth'
 
 export default function ProfilePage() {
+  const router = useRouter()
   const [isEditing, setIsEditing] = useState(false)
+  const [user, setUser] = useState(null)
+  const [loading, setLoading] = useState(true)
   const [userData, setUserData] = useState({
-    name: 'Gaurav Kumar',
-    email: 'gaurav.kumar@example.com',
-    phone: '+91 98765 43210',
+    name: '',
+    email: '',
+    phone: '',
     address: 'Delhi, India',
     dob: '1998-05-15',
     licenseNumber: 'DL04 20230012345',
@@ -411,11 +416,31 @@ export default function ProfilePage() {
   const [bookings, setBookings] = useState([])
   const [activeTab, setActiveTab] = useState('bookings')
 
+  // Check authentication first
   useEffect(() => {
+    if (!isAuthenticated()) {
+      console.log('❌ Not authenticated, redirecting to login')
+      router.push('/auth')
+      return
+    }
+
+    // Load user data
+    const currentUser = getCurrentUser()
+    if (currentUser) {
+      setUser(currentUser)
+      setUserData(prev => ({
+        ...prev,
+        name: currentUser.name || '',
+        email: currentUser.email || '',
+        phone: currentUser.phone || ''
+      }))
+    }
+
     // Load bookings from localStorage
     const savedBookings = JSON.parse(localStorage.getItem('rideease_bookings') || '[]')
     setBookings(savedBookings)
-  }, [])
+    setLoading(false)
+  }, [router])
 
   const handleEditToggle = () => {
     if (isEditing) {
@@ -449,7 +474,6 @@ export default function ProfilePage() {
 
   const handleDownloadInvoice = (booking) => {
     toast.success(`Invoice for ${booking.vehicle?.name || 'Vehicle'} downloaded!`)
-    // In real app, generate and download PDF invoice
   }
 
   const kycStatus = {
@@ -474,34 +498,41 @@ export default function ProfilePage() {
   const completedBookings = bookings.filter(b => b.status === 'completed')
   const cancelledBookings = bookings.filter(b => b.status === 'cancelled')
 
+  // Show loading spinner while checking auth
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    )
+  }
+
+  // If not authenticated, don't render anything (redirect happens in useEffect)
+  if (!user) {
+    return null
+  }
+
   return (
     <div className="pt-24 pb-16">
       <div className="section-padding max-w-6xl mx-auto">
         {/* Profile Header */}
-        <div className="bg-gradient-to-r from-[--color-primary-600] to-[--color-primary-800] rounded-2xl p-8 text-white mb-8">
+        <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-2xl p-8 text-white mb-8">
           <div className="flex flex-col md:flex-row md:items-center justify-between">
             <div className="flex items-center gap-6 mb-6 md:mb-0">
               <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center">
-                <div className="w-20 h-20 bg-[--color-primary-100] rounded-full flex items-center justify-center text-[--color-primary-600] text-3xl font-bold">
-                  {userData.name.split(' ').map(n => n[0]).join('')}
+                <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 text-3xl font-bold">
+                  {userData.name.split(' ').map(n => n[0]).join('').toUpperCase() || 'U'}
                 </div>
               </div>
               <div>
-                <h1 className="text-3xl font-bold mb-2">{userData.name}</h1>
-                <p className="opacity-90">Premium Member • Joined Nov 2023</p>
+                <h1 className="text-3xl font-bold mb-2">{userData.name || user?.name}</h1>
+                <p className="opacity-90">{userData.email || user?.email}</p>
               </div>
             </div>
             <div className="flex flex-col sm:flex-row gap-3">
               <button
-                onClick={() => window.location.href = '/add-vehicle'}
-                className="bg-white/20 text-white px-6 py-3 rounded-lg font-semibold hover:bg-white/30 transition-colors flex items-center gap-2"
-              >
-                <FaCar />
-                List Your Vehicle
-              </button>
-              <button
                 onClick={handleEditToggle}
-                className="bg-white text-[--color-primary-600] px-6 py-3 rounded-lg font-semibold hover:bg-gray-100 transition-colors flex items-center gap-2"
+                className="bg-white text-blue-600 px-6 py-3 rounded-lg font-semibold hover:bg-gray-100 transition-colors flex items-center gap-2"
               >
                 {isEditing ? <FaCheck /> : <FaEdit />}
                 {isEditing ? 'Save Changes' : 'Edit Profile'}
@@ -516,7 +547,11 @@ export default function ProfilePage() {
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-6 py-3 rounded-lg font-medium transition-colors ${activeTab === tab ? 'bg-[--color-primary-600] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+              className={`px-6 py-3 rounded-lg font-medium transition-colors ${
+                activeTab === tab 
+                  ? 'bg-blue-600 text-white' 
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
             >
               {tab.charAt(0).toUpperCase() + tab.slice(1)}
             </button>
@@ -532,19 +567,27 @@ export default function ProfilePage() {
                 <div className="flex flex-wrap gap-2 mb-6">
                   <button
                     onClick={() => setActiveTab('bookings')}
-                    className={`px-4 py-2 rounded-lg font-medium ${activeTab === 'bookings' ? 'bg-[--color-primary-600] text-white' : 'bg-gray-100 text-gray-700'}`}
+                    className={`px-4 py-2 rounded-lg font-medium ${
+                      activeTab === 'bookings' 
+                        ? 'bg-blue-600 text-white' 
+                        : 'bg-gray-100 text-gray-700'
+                    }`}
                   >
                     All ({bookings.length})
                   </button>
                   <button
                     onClick={() => setActiveTab('bookings')}
-                    className={`px-4 py-2 rounded-lg font-medium ${false ? 'bg-[--color-primary-600] text-white' : 'bg-gray-100 text-gray-700'}`}
+                    className={`px-4 py-2 rounded-lg font-medium ${
+                      false ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'
+                    }`}
                   >
                     Upcoming ({upcomingBookings.length})
                   </button>
                   <button
                     onClick={() => setActiveTab('bookings')}
-                    className={`px-4 py-2 rounded-lg font-medium ${false ? 'bg-[--color-primary-600] text-white' : 'bg-gray-100 text-gray-700'}`}
+                    className={`px-4 py-2 rounded-lg font-medium ${
+                      false ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'
+                    }`}
                   >
                     Completed ({completedBookings.length})
                   </button>
@@ -559,7 +602,7 @@ export default function ProfilePage() {
                       <p className="text-gray-600 mb-6">Start your first booking today!</p>
                       <button
                         onClick={() => window.location.href = '/'}
-                        className="bg-[--color-primary-600] text-white px-6 py-3 rounded-lg font-medium hover:bg-[--color-primary-700]"
+                        className="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700"
                       >
                         Browse Vehicles
                       </button>
@@ -570,8 +613,8 @@ export default function ProfilePage() {
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
                           <div className="flex items-center gap-4">
                             {booking.vehicle?.type === 'car' ? 
-                              <FaCar className="text-2xl text-[--color-primary-600]" /> : 
-                              <FaMotorcycle className="text-2xl text-[--color-primary-600]" />
+                              <FaCar className="text-2xl text-blue-600" /> : 
+                              <FaMotorcycle className="text-2xl text-blue-600" />
                             }
                             <div>
                               <div className="font-semibold">{booking.vehicle?.name || 'Vehicle'}</div>
@@ -620,7 +663,7 @@ export default function ProfilePage() {
                         )}
 
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-4 border-t">
-                          <div className="text-xl font-bold text-[--color-primary-600]">
+                          <div className="text-xl font-bold text-blue-600">
                             ₹{booking.total || 0}
                           </div>
                           
@@ -651,6 +694,24 @@ export default function ProfilePage() {
                             </button>
                           </div>
                         </div>
+
+                        {/* Rating Section for Completed Bookings */}
+                        {booking.status === 'completed' && !booking.rating && (
+                          <div className="mt-4 pt-4 border-t">
+                            <p className="text-sm text-gray-600 mb-2">Rate your experience:</p>
+                            <div className="flex gap-2">
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <button
+                                  key={star}
+                                  onClick={() => handleRating(booking.id, star)}
+                                  className="p-1 hover:scale-110 transition-transform"
+                                >
+                                  <FaStar className="text-gray-400 hover:text-yellow-400 text-xl" />
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))
                   )}
@@ -665,7 +726,7 @@ export default function ProfilePage() {
                 {/* KYC Status */}
                 <div className="mb-8">
                   <h3 className="text-lg font-semibold mb-4 flex items-center gap-3">
-                    <FaShieldAlt className="text-[--color-primary-600]" />
+                    <FaShieldAlt className="text-blue-600" />
                     KYC Status
                   </h3>
                   
@@ -675,8 +736,8 @@ export default function ProfilePage() {
                         <div className="flex items-center gap-3">
                           <FaIdCard className="text-gray-500" />
                           <div>
-                            <div className="font-medium">
-                              {key.split(/(?=[A-Z])/).join(' ')}
+                            <div className="font-medium capitalize">
+                              {key.replace(/([A-Z])/g, ' $1').trim()}
                             </div>
                             <div className={`text-sm ${value.status === 'verified' ? 'text-green-600' : 'text-yellow-600'}`}>
                               {value.status.charAt(0).toUpperCase() + value.status.slice(1)}
@@ -688,7 +749,7 @@ export default function ProfilePage() {
                     ))}
                   </div>
 
-                  <button className="w-full mt-6 bg-[--color-primary-600] text-white py-3 rounded-lg font-medium hover:bg-[--color-primary-700] transition-colors">
+                  <button className="w-full mt-6 bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors">
                     Complete KYC Verification
                   </button>
                 </div>
@@ -708,10 +769,10 @@ export default function ProfilePage() {
                       </div>
                     </div>
                     <div className="mt-4 flex gap-3">
-                      <button className="px-4 py-2 border border-[--color-primary-600] text-[--color-primary-600] rounded-lg hover:bg-[--color-primary-50]">
+                      <button className="px-4 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50">
                         View Document
                       </button>
-                      <button className="px-4 py-2 bg-[--color-primary-600] text-white rounded-lg hover:bg-[--color-primary-700]">
+                      <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
                         Upload New
                       </button>
                     </div>
@@ -731,7 +792,7 @@ export default function ProfilePage() {
                     <p className="text-gray-600 mb-6">Start earning by listing your vehicle for rent</p>
                     <button
                       onClick={() => window.location.href = '/add-vehicle'}
-                      className="bg-[--color-primary-600] text-white px-6 py-3 rounded-lg font-medium hover:bg-[--color-primary-700]"
+                      className="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700"
                     >
                       List Your Vehicle
                     </button>
@@ -751,7 +812,7 @@ export default function ProfilePage() {
                           </div>
                         </div>
                         <div className="text-right">
-                          <div className="text-lg font-bold text-[--color-primary-600]">₹2,200/day</div>
+                          <div className="text-lg font-bold text-blue-600">₹2,200/day</div>
                           <div className="text-sm text-green-600">Active • 12 bookings</div>
                         </div>
                       </div>
@@ -771,7 +832,7 @@ export default function ProfilePage() {
                           <button className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
                             Edit
                           </button>
-                          <button className="px-4 py-2 bg-[--color-primary-600] text-white rounded-lg hover:bg-[--color-primary-700]">
+                          <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
                             View Bookings
                           </button>
                         </div>
@@ -788,7 +849,7 @@ export default function ProfilePage() {
             {/* Personal Information */}
             <div className="bg-white rounded-xl shadow-sm p-6">
               <h2 className="text-xl font-semibold mb-6 flex items-center gap-3">
-                <FaUser className="text-[--color-primary-600]" />
+                <FaUser className="text-blue-600" />
                 Personal Information
               </h2>
               
@@ -802,10 +863,10 @@ export default function ProfilePage() {
                       type="text"
                       value={userData.name}
                       onChange={(e) => handleInputChange('name', e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[--color-primary-500] focus:border-transparent"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   ) : (
-                    <div className="px-4 py-3 bg-gray-50 rounded-lg">{userData.name}</div>
+                    <div className="px-4 py-3 bg-gray-50 rounded-lg">{userData.name || 'Not set'}</div>
                   )}
                 </div>
                 
@@ -818,10 +879,10 @@ export default function ProfilePage() {
                       type="email"
                       value={userData.email}
                       onChange={(e) => handleInputChange('email', e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[--color-primary-500] focus:border-transparent"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   ) : (
-                    <div className="px-4 py-3 bg-gray-50 rounded-lg">{userData.email}</div>
+                    <div className="px-4 py-3 bg-gray-50 rounded-lg">{userData.email || 'Not set'}</div>
                   )}
                 </div>
 
@@ -835,10 +896,10 @@ export default function ProfilePage() {
                       type="tel"
                       value={userData.phone}
                       onChange={(e) => handleInputChange('phone', e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[--color-primary-500] focus:border-transparent"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   ) : (
-                    <div className="px-4 py-3 bg-gray-50 rounded-lg">{userData.phone}</div>
+                    <div className="px-4 py-3 bg-gray-50 rounded-lg">{userData.phone || 'Not set'}</div>
                   )}
                 </div>
 
@@ -852,10 +913,27 @@ export default function ProfilePage() {
                       type="text"
                       value={userData.address}
                       onChange={(e) => handleInputChange('address', e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[--color-primary-500] focus:border-transparent"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   ) : (
                     <div className="px-4 py-3 bg-gray-50 rounded-lg">{userData.address}</div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <FaCalendarAlt className="inline mr-2 text-gray-500" />
+                    Date of Birth
+                  </label>
+                  {isEditing ? (
+                    <input
+                      type="date"
+                      value={userData.dob}
+                      onChange={(e) => handleInputChange('dob', e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  ) : (
+                    <div className="px-4 py-3 bg-gray-50 rounded-lg">{userData.dob}</div>
                   )}
                 </div>
               </div>
@@ -865,25 +943,25 @@ export default function ProfilePage() {
             <div className="bg-white rounded-xl shadow-sm p-6">
               <h3 className="text-lg font-semibold mb-6">Your Stats</h3>
               
-              <div className="space-y-6">
+              <div className="grid grid-cols-3 gap-4">
                 <div className="text-center">
                   <div className="text-3xl font-bold text-gray-900">{stats.totalBookings}</div>
-                  <div className="text-gray-600">Total Bookings</div>
+                  <div className="text-gray-600 text-sm">Bookings</div>
                 </div>
                 
                 <div className="text-center">
                   <div className="text-3xl font-bold text-gray-900">{stats.averageRating}</div>
-                  <div className="flex items-center justify-center gap-1 mb-2">
+                  <div className="flex items-center justify-center gap-1 mt-1">
                     {[1, 2, 3, 4, 5].map((star) => (
-                      <FaStar key={star} className={`${star <= stats.averageRating ? 'text-yellow-400' : 'text-gray-300'}`} />
+                      <FaStar key={star} className={`text-xs ${star <= stats.averageRating ? 'text-yellow-400' : 'text-gray-300'}`} />
                     ))}
                   </div>
-                  <div className="text-gray-600">Average Rating</div>
+                  <div className="text-gray-600 text-sm">Rating</div>
                 </div>
                 
                 <div className="text-center">
                   <div className="text-3xl font-bold text-gray-900">₹{stats.totalSpent}</div>
-                  <div className="text-gray-600">Total Spent</div>
+                  <div className="text-gray-600 text-sm">Spent</div>
                 </div>
               </div>
             </div>
@@ -895,21 +973,23 @@ export default function ProfilePage() {
               <div className="space-y-4">
                 <button 
                   onClick={() => setActiveTab('bookings')}
-                  className="w-full flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors">
+                  className="w-full flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors"
+                >
                   <div className="flex items-center gap-3">
-                    <FaCalendarAlt className="text-[--color-primary-600]" />
-                    <span>Upcoming Bookings</span>
+                    <FaHistory className="text-blue-600" />
+                    <span>My Bookings</span>
                   </div>
-                  <span className="bg-[--color-primary-100] text-[--color-primary-800] px-3 py-1 rounded-full text-sm">
-                    {upcomingBookings.length}
+                  <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm">
+                    {bookings.length}
                   </span>
                 </button>
                 
                 <button 
                   onClick={() => window.location.href = '/add-vehicle'}
-                  className="w-full flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors">
+                  className="w-full flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors"
+                >
                   <div className="flex items-center gap-3">
-                    <FaCar className="text-[--color-primary-600]" />
+                    <FaCar className="text-blue-600" />
                     <span>List Your Vehicle</span>
                   </div>
                   <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm">
@@ -919,10 +999,25 @@ export default function ProfilePage() {
                 
                 <button 
                   onClick={() => setActiveTab('documents')}
-                  className="w-full flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors">
+                  className="w-full flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors"
+                >
                   <div className="flex items-center gap-3">
-                    <FaIdCard className="text-[--color-primary-600]" />
+                    <FaIdCard className="text-blue-600" />
                     <span>My Documents</span>
+                  </div>
+                </button>
+
+                <button 
+                  onClick={() => {
+                    localStorage.removeItem('rideease_user')
+                    localStorage.removeItem('rideease_token')
+                    router.push('/auth')
+                  }}
+                  className="w-full flex items-center justify-between p-4 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <FaTimes className="text-red-600" />
+                    <span className="text-red-600">Logout</span>
                   </div>
                 </button>
               </div>

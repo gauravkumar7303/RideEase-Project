@@ -727,7 +727,7 @@ export default function AddVehiclePage() {
           <button
             onClick={step === 4 ? handleSubmit : handleNext}
             disabled={loading}
-            className={`px-8 py-3 rounded-lg font-medium flex items-center gap-2 ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-[--color-primary-600] hover:bg-[--color-primary-700] text-white'}`}
+            className={`px-8 py-3 rounded-lg font-medium flex items-center gap-2 ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-[--color-primary-600] hover:bg-[--color-primary-700] text-black'}`}
           >
             {loading ? (
               <>

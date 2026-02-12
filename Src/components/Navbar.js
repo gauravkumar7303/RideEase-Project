@@ -2,14 +2,17 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import { FaBars, FaTimes, FaMotorcycle, FaCar, FaUser, FaHeart, FaShoppingCart, FaBell } from 'react-icons/fa'
+import { usePathname, useRouter } from 'next/navigation'
+import { FaBars, FaTimes, FaMotorcycle, FaCar, FaUser, FaHeart, FaShoppingCart, FaBell, FaSignOutAlt } from 'react-icons/fa'
 import { toast } from 'react-toastify'
+import { getCurrentUser, isAuthenticated, logoutUser } from '@/Src/utils/auth'
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
+  const [user, setUser] = useState(null)
   const pathname = usePathname()
+  const router = useRouter()
 
   useEffect(() => {
     const handleScroll = () => {
@@ -18,6 +21,23 @@ export default function Navbar() {
     window.addEventListener('scroll', handleScroll)
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
+
+  // ✅ Get user data from localStorage
+  useEffect(() => {
+    if (isAuthenticated()) {
+      const currentUser = getCurrentUser()
+      setUser(currentUser)
+    } else {
+      setUser(null)
+    }
+  }, [pathname]) // Re-run when pathname changes
+
+  const handleLogout = () => {
+    logoutUser() // This will clear localStorage and redirect to /auth
+    toast.success('Logged out successfully!')
+    setUser(null)
+    setIsOpen(false)
+  }
 
   const navLinks = [
     { name: 'Home', href: '/' },
@@ -28,11 +48,10 @@ export default function Navbar() {
     { name: 'Contact', href: '/contact' },
   ]
 
-  const user = {
-    name: 'Gaurav Kumar',
-    avatar: 'GK',
-    bookings: 3,
-    favorites: 5,
+  // ✅ Get user initials for avatar
+  const getUserInitials = () => {
+    if (!user || !user.name) return 'U'
+    return user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
   }
 
   return (
@@ -41,11 +60,13 @@ export default function Navbar() {
     }`}>
       <div className="section-padding">
         <div className="flex items-center justify-between h-16">
-          {/* Logo */}
+          {/* Logo (replace RE text with image) */}
           <Link href="/" className="flex items-center space-x-2">
-            <div className="w-10 h-10 bg-gradient-to-r from-[--color-primary-600] to-[--color-primary-800] rounded-lg flex items-center justify-center">
-              <FaMotorcycle className="text-white text-xl" />
-            </div>
+            <img
+              src="/assets/logos/logo.png"
+              alt="RideEase logo"
+              className="w-10 h-10 object-cover rounded-lg"
+            />
             <span className="text-2xl font-bold text-gray-900">
               RideEase
             </span>
@@ -59,8 +80,8 @@ export default function Navbar() {
                 href={link.href}
                 className={`flex items-center space-x-2 font-medium transition-colors ${
                   pathname === link.href
-                    ? 'text-[--color-primary-600]'
-                    : 'text-gray-600 hover:text-[--color-primary-600]'
+                    ? 'text-blue-600'
+                    : 'text-gray-600 hover:text-blue-600'
                 }`}
               >
                 {link.icon && <span>{link.icon}</span>}
@@ -71,51 +92,68 @@ export default function Navbar() {
 
           {/* User Actions */}
           <div className="hidden md:flex items-center space-x-4">
-            <button 
-              className="p-2 text-gray-600 hover:text-[--color-primary-600] relative"
-              onClick={() => toast.info('Favorites feature coming soon!')}
-            >
-              <FaHeart className="text-xl" />
-              {user.favorites > 0 && (
-                <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-                  {user.favorites}
-                </span>
-              )}
-            </button>
+            {user ? (
+              // ✅ LOGGED IN STATE
+              <>
+                <button 
+                  className="p-2 text-gray-600 hover:text-blue-600 relative"
+                  onClick={() => toast.info('Favorites feature coming soon!')}
+                >
+                  <FaHeart className="text-xl" />
+                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-blue-600 rounded-full"></span>
+                </button>
 
-            <button 
-              className="p-2 text-gray-600 hover:text-[--color-primary-600] relative"
-              onClick={() => toast.info('Notifications feature coming soon!')}
-            >
-              <FaBell className="text-xl" />
-              <span className="absolute -top-1 -right-1 w-2 h-2 bg-[--color-primary-600] rounded-full"></span>
-            </button>
+                <button 
+                  className="p-2 text-gray-600 hover:text-blue-600 relative"
+                  onClick={() => toast.info('Notifications feature coming soon!')}
+                >
+                  <FaBell className="text-xl" />
+                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-blue-600 rounded-full"></span>
+                </button>
+
+                <Link
+                  href="/profile"
+                  className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-blue-800 rounded-full flex items-center justify-center">
+                    <span className="text-white font-semibold text-sm">
+                      {getUserInitials()}
+                    </span>
+                  </div>
+                  <span className="font-medium hidden lg:inline">
+                    {user.name?.split(' ')[0] || 'User'}
+                  </span>
+                </Link>
+
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center space-x-2 p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                >
+                  <FaSignOutAlt />
+                  <span className="hidden lg:inline">Logout</span>
+                </button>
+              </>
+            ) : (
+              // ✅ LOGGED OUT STATE
+              <>
+                <Link
+                  href="/auth"
+                  className="text-gray-600 hover:text-blue-600 font-medium"
+                >
+                  Login
+                </Link>
+                <Link
+                  href="/auth?signup=true"
+                  className="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors"
+                >
+                  Sign Up
+                </Link>
+              </>
+            )}
 
             <Link
               href="/booking"
-              className="p-2 text-gray-600 hover:text-[--color-primary-600] relative"
-            >
-              <FaShoppingCart className="text-xl" />
-              {user.bookings > 0 && (
-                <span className="absolute -top-1 -right-1 w-5 h-5 bg-[--color-primary-600] text-white text-xs rounded-full flex items-center justify-center">
-                  {user.bookings}
-                </span>
-              )}
-            </Link>
-
-            <Link
-              href="/profile"
-              className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100 transition-colors"
-            >
-              <div className="w-8 h-8 bg-gradient-to-r from-[--color-primary-600] to-[--color-primary-800] rounded-full flex items-center justify-center">
-                <span className="text-white font-semibold text-sm">{user.avatar}</span>
-              </div>
-              <span className="font-medium hidden lg:inline">{user.name}</span>
-            </Link>
-
-            <Link
-              href="/booking"
-              className="bg-[--color-primary-600] text-white px-6 py-3 rounded-lg font-medium hover:bg-[--color-primary-700] transition-colors ml-4"
+              className="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors ml-2"
             >
               Book Now
             </Link>
@@ -124,7 +162,7 @@ export default function Navbar() {
           {/* Mobile menu button */}
           <button
             onClick={() => setIsOpen(!isOpen)}
-            className="md:hidden p-2 text-gray-600 hover:text-[--color-primary-600]"
+            className="md:hidden p-2 text-gray-600 hover:text-blue-600"
           >
             {isOpen ? <FaTimes className="text-xl" /> : <FaBars className="text-xl" />}
           </button>
@@ -140,7 +178,7 @@ export default function Navbar() {
                   href={link.href}
                   className={`flex items-center space-x-3 p-2 rounded-lg transition-colors ${
                     pathname === link.href
-                      ? 'bg-[--color-primary-50] text-[--color-primary-600]'
+                      ? 'bg-blue-50 text-blue-600'
                       : 'hover:bg-gray-100 text-gray-600'
                   }`}
                   onClick={() => setIsOpen(false)}
@@ -151,25 +189,50 @@ export default function Navbar() {
               ))}
               
               <div className="pt-4 border-t space-y-3">
-                <Link
-                  href="/profile"
-                  className="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-100"
-                  onClick={() => setIsOpen(false)}
-                >
-                  <FaUser />
-                  <span>My Profile</span>
-                </Link>
+                {user ? (
+                  // ✅ MOBILE - LOGGED IN
+                  <>
+                    <Link
+                      href="/profile"
+                      className="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-100"
+                      onClick={() => setIsOpen(false)}
+                    >
+                      <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-blue-800 rounded-full flex items-center justify-center">
+                        <span className="text-white font-semibold text-sm">
+                          {getUserInitials()}
+                        </span>
+                      </div>
+                      <span className="font-medium">{user.name || 'My Profile'}</span>
+                    </Link>
+                    <button
+                      onClick={handleLogout}
+                      className="flex items-center space-x-3 p-2 text-red-600 hover:bg-red-50 rounded-lg w-full"
+                    >
+                      <FaSignOutAlt />
+                      <span>Logout</span>
+                    </button>
+                  </>
+                ) : (
+                  // ✅ MOBILE - LOGGED OUT
+                  <>
+                    <Link
+                      href="/auth"
+                      className="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-100"
+                      onClick={() => setIsOpen(false)}
+                    >
+                      <FaUser />
+                      <span>Login / Sign Up</span>
+                    </Link>
+                  </>
+                )}
+                
                 <Link
                   href="/booking"
-                  className="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-100"
+                  className="bg-blue-600 text-white w-full py-3 rounded-lg font-medium text-center block"
                   onClick={() => setIsOpen(false)}
                 >
-                  <FaShoppingCart />
-                  <span>My Bookings</span>
-                </Link>
-                <button className="bg-[--color-primary-600] text-white w-full py-3 rounded-lg font-medium mt-2">
                   Book Vehicle
-                </button>
+                </Link>
               </div>
             </div>
           </div>

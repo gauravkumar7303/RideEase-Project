@@ -52,26 +52,34 @@ export default function RootLayout({ children }) {
   const router = useRouter()
   
   // Public routes that don't require authentication
-  const publicRoutes = ['/auth', '/about', '/contact', '/how-it-works', '/']
+  const publicRoutes = ['/auth', '/about', '/contact', '/how-it-works', '/', '/bikes', '/cars']
   
   useEffect(() => {
-    // Skip auth check for public routes
-    if (publicRoutes.includes(pathname)) {
+    const checkAuth = async () => {
+      console.log('📍 Layout - Current path:', pathname)
+      
+      // Skip auth check for public routes
+      if (publicRoutes.includes(pathname)) {
+        console.log('✅ Public route - no auth required')
+        setIsLoading(false)
+        return
+      }
+      
+      // Check authentication
+      const auth = isAuthenticated()
+      console.log('🔐 Auth check in layout:', auth ? '✅ Authenticated' : '❌ Not authenticated')
+      
+      if (!auth) {
+        console.log('➡️ Redirecting to /auth')
+        router.push('/auth')
+        return
+      }
+      
+      console.log('✅ Access granted to private route')
       setIsLoading(false)
-      return
     }
     
-    // Check authentication
-    const auth = isAuthenticated()
-    
-    if (!auth) {
-      // If not authenticated and trying to access private route, redirect to auth
-      router.push('/auth')
-      return
-    }
-    
-    // If authenticated, show the page
-    setIsLoading(false)
+    checkAuth()
   }, [pathname, router])
 
   // Show loading spinner while checking auth
