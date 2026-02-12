@@ -303,35 +303,72 @@ export const authAPI = {
 };
 
 // Vehicle API functions
+// export const vehicleAPI = {
+//   getAll: (filters = {}) => {
+//     const params = new URLSearchParams(filters).toString();
+//     return apiRequest(`/vehicles${params ? `?${params}` : ''}`);
+//   },
+
+//   getById: (id) => apiRequest(`/vehicles/${id}`),
+
+//   create: (vehicleData) =>
+//     apiRequest('/vehicles', {
+//       method: 'POST',
+//       body: JSON.stringify(vehicleData),
+//     }),
+
+//   update: (id, vehicleData) =>
+//     apiRequest(`/vehicles/${id}`, {
+//       method: 'PUT',
+//       body: JSON.stringify(vehicleData),
+//     }),
+
+//   delete: (id) =>
+//     apiRequest(`/vehicles/${id}`, {
+//       method: 'DELETE',
+//     }),
+
+//   uploadImages: (vehicleId, formData) =>
+//     uploadFile(`/vehicles/${vehicleId}/images`, formData),
+// };
+// Add to your existing authAPI object in Src/utils/api.js
+
+// Vehicle API functions
+// Vehicle API functions
 export const vehicleAPI = {
-  getAll: (filters = {}) => {
-    const params = new URLSearchParams(filters).toString();
-    return apiRequest(`/vehicles${params ? `?${params}` : ''}`);
-  },
-
-  getById: (id) => apiRequest(`/vehicles/${id}`),
-
+  // POST /api/vehicles - Create new vehicle
   create: (vehicleData) =>
     apiRequest('/vehicles', {
       method: 'POST',
       body: JSON.stringify(vehicleData),
     }),
 
+  // GET /api/vehicles - Get all vehicles (with filters)
+  getAll: (filters = {}) => {
+    const params = new URLSearchParams(filters).toString();
+    return apiRequest(`/vehicles${params ? `?${params}` : ''}`);
+  },
+
+  // GET /api/vehicles/:id - Get single vehicle
+  getById: (id) => apiRequest(`/vehicles/${id}`),
+
+  // PUT /api/vehicles/:id - Update vehicle
   update: (id, vehicleData) =>
     apiRequest(`/vehicles/${id}`, {
       method: 'PUT',
       body: JSON.stringify(vehicleData),
     }),
 
+  // DELETE /api/vehicles/:id - Delete vehicle
   delete: (id) =>
     apiRequest(`/vehicles/${id}`, {
       method: 'DELETE',
     }),
 
-  uploadImages: (vehicleId, formData) =>
-    uploadFile(`/vehicles/${vehicleId}/images`, formData),
+// Get owner's vehicles
+getOwnerVehicles: (ownerId) =>
+  apiRequest(`/vehicles?owner=${ownerId}`),
 };
-
 // Booking API functions - FIXED
 export const bookingAPI = {
   create: (bookingData) =>
@@ -365,3 +402,4 @@ export const userAPI = {
   uploadDocument: (documentType, formData) =>
     uploadFile(`/users/documents/${documentType}`, formData),
 };
+

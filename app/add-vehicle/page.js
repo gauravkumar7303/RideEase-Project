@@ -1,7 +1,7 @@
-/*app/add-vehicle/page.js*/
+/* app/add-vehicle/page.js */
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   FaCar,
@@ -12,15 +12,30 @@ import {
   FaMapMarkerAlt,
   FaCheckCircle,
   FaUpload,
-  FaTimes
+  FaTimes,
+  FaFileAlt
 } from 'react-icons/fa'
 import { toast } from 'react-toastify'
+import { vehicleAPI } from '@/Src/utils/api'
+import { getCurrentUser, isAuthenticated } from '@/Src/utils/auth'
 
 export default function AddVehiclePage() {
   const router = useRouter()
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [images, setImages] = useState([])
+  const [user, setUser] = useState(null)
+
+  // Check authentication
+  useEffect(() => {
+    if (!isAuthenticated()) {
+      toast.error('Please login to list your vehicle')
+      router.push('/auth')
+      return
+    }
+    const currentUser = getCurrentUser()
+    setUser(currentUser)
+  }, [router])
 
   const [vehicleData, setVehicleData] = useState({
     // Step 1: Basic Info
@@ -28,6 +43,7 @@ export default function AddVehiclePage() {
     brand: '',
     model: '',
     year: new Date().getFullYear(),
+    registrationNumber: '',
     fuelType: 'petrol',
     transmission: 'automatic',
     seats: 5,
@@ -42,14 +58,16 @@ export default function AddVehiclePage() {
     // Step 3: Location & Availability
     location: '',
     address: '',
+    latitude: '',
+    longitude: '',
     availableFrom: '',
     availableTo: '',
     
-    // Step 4: Owner Info
-    ownerName: '',
-    ownerPhone: '',
-    ownerEmail: '',
-    bankAccount: ''
+    // Step 4: Documents
+    rcBookImage: null,
+    insuranceImage: null,
+    insuranceValidUntil: '',
+    description: ''
   })
 
   const featuresList = [
@@ -86,19 +104,47 @@ export default function AddVehiclePage() {
       return
     }
     
-    // Simulate image upload
-    const newImages = files.map(file => ({
-      id: Date.now() + Math.random(),
-      url: URL.createObjectURL(file),
-      name: file.name
-    }))
+    files.forEach(file => {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setImages(prev => [...prev, {
+          id: Date.now() + Math.random(),
+          data: reader.result,
+          name: file.name,
+          isPrimary: prev.length === 0 // First image is primary
+        }])
+      }
+      reader.readAsDataURL(file)
+    })
     
-    setImages(prev => [...prev, ...newImages])
     toast.success(`${files.length} image(s) added`)
+  }
+
+  const handleDocumentUpload = (field, e) => {
+    const file = e.target.files[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      setVehicleData(prev => ({
+        ...prev,
+        [field]: reader.result
+      }))
+      toast.success(`${field === 'rcBookImage' ? 'RC Book' : 'Insurance'} uploaded successfully`)
+    }
+    reader.readAsDataURL(file)
   }
 
   const removeImage = (id) => {
     setImages(prev => prev.filter(img => img.id !== id))
+  }
+
+  const setPrimaryImage = (id) => {
+    setImages(prev => prev.map(img => ({
+      ...img,
+      isPrimary: img.id === id
+    })))
+    toast.success('Primary image updated')
   }
 
   const calculateWeeklyPrice = (daily) => daily * 7 * 0.9 // 10% discount
@@ -121,6 +167,10 @@ export default function AddVehiclePage() {
           toast.error('Please fill all required fields')
           return false
         }
+        if (!vehicleData.registrationNumber) {
+          toast.error('Registration number is required')
+          return false
+        }
         return true
       case 2:
         if (vehicleData.pricePerDay <= 0) {
@@ -128,7 +178,7 @@ export default function AddVehiclePage() {
           return false
         }
         if (images.length < 2) {
-          toast.error('Please upload at least 2 images')
+          toast.error('Please upload at least 2 vehicle images')
           return false
         }
         return true
@@ -139,8 +189,16 @@ export default function AddVehiclePage() {
         }
         return true
       case 4:
-        if (!vehicleData.ownerName || !vehicleData.ownerPhone || !vehicleData.ownerEmail) {
-          toast.error('Please fill all owner details')
+        if (!vehicleData.rcBookImage) {
+          toast.error('Please upload RC Book')
+          return false
+        }
+        if (!vehicleData.insuranceImage) {
+          toast.error('Please upload Insurance Certificate')
+          return false
+        }
+        if (!vehicleData.insuranceValidUntil) {
+          toast.error('Please enter insurance expiry date')
           return false
         }
         return true
@@ -169,18 +227,56 @@ export default function AddVehiclePage() {
     
     setLoading(true)
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      // Prepare vehicle data for API
+      const vehiclePayload = {
+        owner: user?._id,
+        vehicleType: vehicleData.vehicleType,
+        brand: vehicleData.brand,
+        model: vehicleData.model,
+        year: parseInt(vehicleData.year),
+        registrationNumber: vehicleData.registrationNumber,
+        rcBookImage: vehicleData.rcBookImage,
+        insuranceImage: vehicleData.insuranceImage,
+        insuranceValidUntil: vehicleData.insuranceValidUntil,
+        fuelType: vehicleData.fuelType,
+        transmission: vehicleData.transmission,
+        seats: vehicleData.seats,
+        features: vehicleData.features,
+        images: images.map(img => ({
+          data: img.data,
+          isPrimary: img.isPrimary || false
+        })),
+        location: vehicleData.location,
+        latitude: vehicleData.latitude ? parseFloat(vehicleData.latitude) : null,
+        longitude: vehicleData.longitude ? parseFloat(vehicleData.longitude) : null,
+        address: vehicleData.address,
+        pricePerDay: vehicleData.pricePerDay,
+        pricePerWeek: vehicleData.pricePerWeek,
+        pricePerMonth: vehicleData.pricePerMonth,
+        securityDeposit: vehicleData.securityDeposit,
+        availableFrom: vehicleData.availableFrom,
+        availableTo: vehicleData.availableTo,
+        description: vehicleData.description,
+        isAvailable: true,
+        isVerified: false // Will be verified by admin
+      }
+
+      console.log('📤 Submitting vehicle:', vehiclePayload)
       
-      toast.success('Vehicle listed successfully!')
+      // Call API to create vehicle
+      const response = await vehicleAPI.create(vehiclePayload)
+      
+      console.log('✅ Vehicle created:', response)
+      toast.success('Vehicle listed successfully! It will be verified by our team.')
       
       // Reset form and redirect
       setTimeout(() => {
-        router.push('/profile')
-      }, 1500)
+        router.push('/profile?tab=vehicles')
+      }, 2000)
       
     } catch (error) {
-      toast.error('Failed to list vehicle. Please try again.')
+      console.error('❌ Failed to list vehicle:', error)
+      toast.error(error.message || 'Failed to list vehicle. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -190,8 +286,16 @@ export default function AddVehiclePage() {
     { number: 1, title: 'Vehicle Details' },
     { number: 2, title: 'Photos & Pricing' },
     { number: 3, title: 'Location' },
-    { number: 4, title: 'Owner Info' }
+    { number: 4, title: 'Documents' }
   ]
+
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    )
+  }
 
   return (
     <div className="pt-24 pb-16">
@@ -203,14 +307,14 @@ export default function AddVehiclePage() {
               <div key={s.number} className="flex flex-col items-center relative z-10 flex-1">
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-3 transition-all ${
                   s.number === step 
-                    ? 'bg-[--color-primary-600] text-white shadow-lg' 
+                    ? 'bg-blue-600 text-white shadow-lg' 
                     : s.number < step 
                     ? 'bg-green-500 text-white' 
                     : 'bg-gray-200 text-gray-500'
                 }`}>
                   {s.number < step ? <FaCheckCircle /> : s.number}
                 </div>
-                <span className={`text-sm font-medium ${s.number === step ? 'text-[--color-primary-600]' : 'text-gray-500'}`}>
+                <span className={`text-sm font-medium ${s.number === step ? 'text-blue-600' : 'text-gray-500'}`}>
                   {s.title}
                 </span>
               </div>
@@ -234,7 +338,7 @@ export default function AddVehiclePage() {
                   </label>
                   <div className="grid grid-cols-2 gap-4">
                     <div
-                      className={`p-6 border-2 rounded-xl cursor-pointer transition-all ${vehicleData.vehicleType === 'car' ? 'border-[--color-primary-600] bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}
+                      className={`p-6 border-2 rounded-xl cursor-pointer transition-all ${vehicleData.vehicleType === 'car' ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}
                       onClick={() => handleInputChange('vehicleType', 'car')}
                     >
                       <div className="flex flex-col items-center">
@@ -243,7 +347,7 @@ export default function AddVehiclePage() {
                       </div>
                     </div>
                     <div
-                      className={`p-6 border-2 rounded-xl cursor-pointer transition-all ${vehicleData.vehicleType === 'bike' ? 'border-[--color-primary-600] bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}
+                      className={`p-6 border-2 rounded-xl cursor-pointer transition-all ${vehicleData.vehicleType === 'bike' ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}
                       onClick={() => handleInputChange('vehicleType', 'bike')}
                     >
                       <div className="flex flex-col items-center">
@@ -264,7 +368,7 @@ export default function AddVehiclePage() {
                       type="text"
                       value={vehicleData.brand}
                       onChange={(e) => handleInputChange('brand', e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[--color-primary-500] focus:border-transparent"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       placeholder="e.g., Hyundai, Honda, etc."
                     />
                   </div>
@@ -276,7 +380,7 @@ export default function AddVehiclePage() {
                       type="text"
                       value={vehicleData.model}
                       onChange={(e) => handleInputChange('model', e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[--color-primary-500] focus:border-transparent"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       placeholder="e.g., Creta, City, etc."
                     />
                   </div>
@@ -290,7 +394,7 @@ export default function AddVehiclePage() {
                     <select
                       value={vehicleData.year}
                       onChange={(e) => handleInputChange('year', parseInt(e.target.value))}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[--color-primary-500] focus:border-transparent"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     >
                       {Array.from({ length: 20 }, (_, i) => {
                         const year = new Date().getFullYear() - i
@@ -304,20 +408,34 @@ export default function AddVehiclePage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Registration No. *
+                    </label>
+                    <input
+                      type="text"
+                      value={vehicleData.registrationNumber}
+                      onChange={(e) => handleInputChange('registrationNumber', e.target.value.toUpperCase())}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="DL01AB1234"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Fuel Type
                     </label>
                     <select
                       value={vehicleData.fuelType}
                       onChange={(e) => handleInputChange('fuelType', e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[--color-primary-500] focus:border-transparent"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     >
                       <option value="petrol">Petrol</option>
                       <option value="diesel">Diesel</option>
                       <option value="electric">Electric</option>
                       <option value="cng">CNG</option>
-                      <option value="hybrid">Hybrid</option>
                     </select>
                   </div>
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Transmission
@@ -325,33 +443,31 @@ export default function AddVehiclePage() {
                     <select
                       value={vehicleData.transmission}
                       onChange={(e) => handleInputChange('transmission', e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[--color-primary-500] focus:border-transparent"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     >
                       <option value="automatic">Automatic</option>
                       <option value="manual">Manual</option>
                     </select>
                   </div>
-                </div>
-
-                {vehicleData.vehicleType === 'car' && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Number of Seats
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      {[2, 4, 5, 7, 8].map(seats => (
-                        <button
-                          key={seats}
-                          type="button"
-                          onClick={() => handleInputChange('seats', seats)}
-                          className={`px-6 py-3 rounded-lg ${vehicleData.seats === seats ? 'bg-[--color-primary-600] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-                        >
-                          {seats} Seats
-                        </button>
-                      ))}
+                  {vehicleData.vehicleType === 'car' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Seats
+                      </label>
+                      <select
+                        value={vehicleData.seats}
+                        onChange={(e) => handleInputChange('seats', parseInt(e.target.value))}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      >
+                        <option value={2}>2 Seater</option>
+                        <option value={4}>4 Seater</option>
+                        <option value={5}>5 Seater</option>
+                        <option value={7}>7 Seater</option>
+                        <option value={8}>8 Seater</option>
+                      </select>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </>
           )}
@@ -365,11 +481,11 @@ export default function AddVehiclePage() {
                 {/* Image Upload */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-4">
-                    Upload Photos * (Min. 2, Max. 10)
+                    Vehicle Photos * (Min. 2, Max. 10)
                   </label>
                   
                   {/* Upload Button */}
-                  <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center mb-6 hover:border-[--color-primary-500] transition-colors">
+                  <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center mb-6 hover:border-blue-500 transition-colors">
                     <input
                       type="file"
                       multiple
@@ -398,18 +514,27 @@ export default function AddVehiclePage() {
                       <div className="flex justify-between items-center mb-4">
                         <div className="font-medium">Uploaded Photos ({images.length}/10)</div>
                         <div className="text-sm text-gray-500">
-                          Click on image to remove
+                          Click on image to set as primary
                         </div>
                       </div>
                       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                         {images.map((image) => (
                           <div key={image.id} className="relative group">
-                            <div className="aspect-square rounded-lg overflow-hidden bg-gray-100">
-                              {/* Mock image */}
-                              <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-100 to-purple-100">
-                                <FaImage className="text-3xl text-gray-400" />
-                              </div>
+                            <div 
+                              className={`aspect-square rounded-lg overflow-hidden bg-gray-100 cursor-pointer border-2 ${image.isPrimary ? 'border-blue-600' : 'border-transparent'}`}
+                              onClick={() => setPrimaryImage(image.id)}
+                            >
+                              <img 
+                                src={image.data} 
+                                alt={image.name}
+                                className="w-full h-full object-cover"
+                              />
                             </div>
+                            {image.isPrimary && (
+                              <div className="absolute top-2 left-2 bg-blue-600 text-white text-xs px-2 py-1 rounded-full">
+                                Primary
+                              </div>
+                            )}
                             <button
                               onClick={() => removeImage(image.id)}
                               className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors"
@@ -432,7 +557,7 @@ export default function AddVehiclePage() {
                     {featuresList.map((feature) => (
                       <div
                         key={feature.id}
-                        className={`p-4 border rounded-lg cursor-pointer transition-all ${vehicleData.features.includes(feature.id) ? 'border-[--color-primary-600] bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}
+                        className={`p-4 border rounded-lg cursor-pointer transition-all ${vehicleData.features.includes(feature.id) ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}
                         onClick={() => handleFeatureToggle(feature.id)}
                       >
                         <div className="text-2xl mb-2">{feature.icon}</div>
@@ -464,7 +589,7 @@ export default function AddVehiclePage() {
                           min="0"
                           value={vehicleData.pricePerDay}
                           onChange={(e) => handlePriceChange('pricePerDay', e.target.value)}
-                          className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[--color-primary-500] focus:border-transparent"
+                          className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                           placeholder="0"
                         />
                       </div>
@@ -479,7 +604,7 @@ export default function AddVehiclePage() {
                       <div className="text-2xl font-bold text-blue-600">
                         ₹{vehicleData.pricePerWeek}
                       </div>
-                      <div className="mt-2 text-sm text-gray-500">Save 10% (₹{vehicleData.pricePerDay * 7 - vehicleData.pricePerWeek}/week)</div>
+                      <div className="mt-2 text-sm text-gray-500">Save 10%</div>
                     </div>
                     
                     <div className="border rounded-lg p-6 bg-green-50">
@@ -490,7 +615,7 @@ export default function AddVehiclePage() {
                       <div className="text-2xl font-bold text-green-600">
                         ₹{vehicleData.pricePerMonth}
                       </div>
-                      <div className="mt-2 text-sm text-gray-500">Save 20% (₹{vehicleData.pricePerDay * 30 - vehicleData.pricePerMonth}/month)</div>
+                      <div className="mt-2 text-sm text-gray-500">Save 20%</div>
                     </div>
                   </div>
                 </div>
@@ -498,7 +623,7 @@ export default function AddVehiclePage() {
                 {/* Security Deposit */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Security Deposit
+                    Security Deposit (₹)
                   </label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">₹</span>
@@ -507,12 +632,12 @@ export default function AddVehiclePage() {
                       min="0"
                       value={vehicleData.securityDeposit}
                       onChange={(e) => handleInputChange('securityDeposit', e.target.value)}
-                      className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[--color-primary-500] focus:border-transparent"
+                      className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       placeholder="5000"
                     />
                   </div>
                   <div className="mt-2 text-sm text-gray-500">
-                    Refundable amount held for damages (recommended: ₹5,000)
+                    Refundable amount held for damages
                   </div>
                 </div>
               </div>
@@ -523,7 +648,7 @@ export default function AddVehiclePage() {
           {step === 3 && (
             <>
               <h2 className="text-2xl font-semibold mb-6 flex items-center gap-3">
-                <FaMapMarkerAlt className="text-[--color-primary-600]" />
+                <FaMapMarkerAlt className="text-blue-600" />
                 Location Details
               </h2>
               
@@ -535,14 +660,14 @@ export default function AddVehiclePage() {
                   <select
                     value={vehicleData.location}
                     onChange={(e) => handleInputChange('location', e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[--color-primary-500] focus:border-transparent"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
                     <option value="">Select a location</option>
-                    <option value="delhi-cp">Delhi - Connaught Place</option>
-                    <option value="delhi-aerocity">Delhi - Aerocity</option>
-                    <option value="gurugram-cybercity">Gurugram - Cyber City</option>
-                    <option value="gurugram-sector29">Gurugram - Sector 29</option>
-                    <option value="noida-sector62">Noida - Sector 62</option>
+                    <option value="Delhi">Delhi</option>
+                    <option value="Gurugram">Gurugram</option>
+                    <option value="Noida">Noida</option>
+                    <option value="Faridabad">Faridabad</option>
+                    <option value="Ghaziabad">Ghaziabad</option>
                   </select>
                 </div>
 
@@ -553,7 +678,7 @@ export default function AddVehiclePage() {
                   <textarea
                     value={vehicleData.address}
                     onChange={(e) => handleInputChange('address', e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[--color-primary-500] focus:border-transparent"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="Enter complete address with landmark"
                     rows="4"
                   />
@@ -568,7 +693,7 @@ export default function AddVehiclePage() {
                       type="date"
                       value={vehicleData.availableFrom}
                       onChange={(e) => handleInputChange('availableFrom', e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[--color-primary-500] focus:border-transparent"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       min={new Date().toISOString().split('T')[0]}
                     />
                   </div>
@@ -580,89 +705,118 @@ export default function AddVehiclePage() {
                       type="date"
                       value={vehicleData.availableTo}
                       onChange={(e) => handleInputChange('availableTo', e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[--color-primary-500] focus:border-transparent"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       min={vehicleData.availableFrom || new Date().toISOString().split('T')[0]}
                     />
                   </div>
                 </div>
 
-                {/* Map Preview */}
-                <div className="mt-8">
-                  <div className="h-64 bg-gradient-to-r from-blue-50 to-gray-100 rounded-lg flex items-center justify-center">
-                    <div className="text-center">
-                      <div className="text-4xl mb-4">🗺️</div>
-                      <div className="font-semibold text-gray-700">Location Preview</div>
-                      <p className="text-gray-500 text-sm mt-2">
-                        Pickup location will be shown to customers
-                      </p>
-                    </div>
-                  </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Description (Optional)
+                  </label>
+                  <textarea
+                    value={vehicleData.description}
+                    onChange={(e) => handleInputChange('description', e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Add any additional details about your vehicle"
+                    rows="3"
+                  />
                 </div>
               </div>
             </>
           )}
 
-          {/* Step 4: Owner Info */}
+          {/* Step 4: Documents */}
           {step === 4 && (
             <>
-              <h2 className="text-2xl font-semibold mb-6">Owner Information</h2>
+              <h2 className="text-2xl font-semibold mb-6 flex items-center gap-3">
+                <FaFileAlt className="text-blue-600" />
+                Documents & Verification
+              </h2>
               
-              <div className="space-y-6">
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Full Name *
-                    </label>
+              <div className="space-y-8">
+                {/* RC Book Upload */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-4">
+                    Registration Certificate (RC) *
+                  </label>
+                  <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-blue-500 transition-colors">
                     <input
-                      type="text"
-                      value={vehicleData.ownerName}
-                      onChange={(e) => handleInputChange('ownerName', e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[--color-primary-500] focus:border-transparent"
-                      placeholder="Enter your full name"
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => handleDocumentUpload('rcBookImage', e)}
+                      className="hidden"
+                      id="rc-book"
                     />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Phone Number *
+                    <label htmlFor="rc-book" className="cursor-pointer">
+                      <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <FaUpload className="text-blue-600" />
+                      </div>
+                      <div className="font-medium mb-1">
+                        {vehicleData.rcBookImage ? 'RC Book Uploaded!' : 'Upload RC Book'}
+                      </div>
+                      <p className="text-sm text-gray-500">
+                        Click to upload or drag and drop
+                      </p>
+                      {vehicleData.rcBookImage && (
+                        <div className="mt-2 text-xs text-green-600 flex items-center justify-center gap-1">
+                          <FaCheckCircle />
+                          Uploaded successfully
+                        </div>
+                      )}
                     </label>
-                    <input
-                      type="tel"
-                      value={vehicleData.ownerPhone}
-                      onChange={(e) => handleInputChange('ownerPhone', e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[--color-primary-500] focus:border-transparent"
-                      placeholder="Enter 10-digit phone number"
-                      maxLength="10"
-                    />
                   </div>
                 </div>
 
+                {/* Insurance Upload */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Email Address *
+                  <label className="block text-sm font-medium text-gray-700 mb-4">
+                    Insurance Certificate *
                   </label>
-                  <input
-                    type="email"
-                    value={vehicleData.ownerEmail}
-                    onChange={(e) => handleInputChange('ownerEmail', e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[--color-primary-500] focus:border-transparent"
-                    placeholder="Enter your email"
-                  />
+                  <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-blue-500 transition-colors">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => handleDocumentUpload('insuranceImage', e)}
+                      className="hidden"
+                      id="insurance"
+                    />
+                    <label htmlFor="insurance" className="cursor-pointer">
+                      <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <FaUpload className="text-green-600" />
+                      </div>
+                      <div className="font-medium mb-1">
+                        {vehicleData.insuranceImage ? 'Insurance Uploaded!' : 'Upload Insurance'}
+                      </div>
+                      <p className="text-sm text-gray-500">
+                        Click to upload or drag and drop
+                      </p>
+                      {vehicleData.insuranceImage && (
+                        <div className="mt-2 text-xs text-green-600 flex items-center justify-center gap-1">
+                          <FaCheckCircle />
+                          Uploaded successfully
+                        </div>
+                      )}
+                    </label>
+                  </div>
                 </div>
 
+                {/* Insurance Expiry */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Bank Account Details (for payments)
+                    Insurance Valid Until *
                   </label>
                   <input
-                    type="text"
-                    value={vehicleData.bankAccount}
-                    onChange={(e) => handleInputChange('bankAccount', e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[--color-primary-500] focus:border-transparent"
-                    placeholder="Account number or UPI ID"
+                    type="date"
+                    value={vehicleData.insuranceValidUntil}
+                    onChange={(e) => handleInputChange('insuranceValidUntil', e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    min={new Date().toISOString().split('T')[0]}
                   />
-                  <div className="mt-2 text-sm text-gray-500">
-                    Payments will be transferred to this account
-                  </div>
+                  <p className="mt-2 text-sm text-gray-500">
+                    Your vehicle must have valid insurance
+                  </p>
                 </div>
 
                 {/* Summary */}
@@ -671,7 +825,11 @@ export default function AddVehiclePage() {
                   <div className="space-y-3">
                     <div className="flex justify-between">
                       <span className="text-gray-600">Vehicle:</span>
-                      <span className="font-medium">{vehicleData.brand} {vehicleData.model}</span>
+                      <span className="font-medium">{vehicleData.brand} {vehicleData.model} ({vehicleData.year})</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Registration:</span>
+                      <span className="font-medium">{vehicleData.registrationNumber}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Daily Rate:</span>
@@ -681,18 +839,11 @@ export default function AddVehiclePage() {
                       <span className="text-gray-600">Location:</span>
                       <span className="font-medium">{vehicleData.location}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Security Deposit:</span>
-                      <span className="font-medium">₹{vehicleData.securityDeposit}</span>
-                    </div>
                     <div className="border-t pt-3 mt-3">
                       <div className="flex justify-between font-bold">
-                        <span>Expected Monthly Earnings:</span>
-                        <span className="text-green-600">₹{Math.round(vehicleData.pricePerMonth * 0.8)}</span>
+                        <span>Security Deposit:</span>
+                        <span className="text-blue-600">₹{vehicleData.securityDeposit}</span>
                       </div>
-                      <p className="text-xs text-gray-500 mt-2">
-                        *Based on 80% occupancy rate
-                      </p>
                     </div>
                   </div>
                 </div>
@@ -702,11 +853,12 @@ export default function AddVehiclePage() {
                   <input
                     type="checkbox"
                     id="terms"
-                    className="w-5 h-5 text-[--color-primary-600] rounded mt-1"
+                    className="w-5 h-5 text-blue-600 rounded mt-1"
                     required
                   />
                   <label htmlFor="terms" className="text-sm text-gray-700">
-                    I agree to the terms and conditions. I confirm that all information provided is accurate and I am the rightful owner of this vehicle. I understand that RideEase will charge a 15% commission on each booking.
+                    I confirm that all information provided is accurate and I am the rightful owner of this vehicle. 
+                    I understand that RideEase will verify the documents and my vehicle will be listed after verification.
                   </label>
                 </div>
               </div>
@@ -719,7 +871,11 @@ export default function AddVehiclePage() {
           <button
             onClick={handlePrevious}
             disabled={step === 1}
-            className={`px-6 py-3 rounded-lg font-medium transition-colors ${step === 1 ? 'text-gray-400 cursor-not-allowed' : 'text-[--color-primary-600] hover:bg-[--color-primary-50] border border-gray-300'}`}
+            className={`px-6 py-3 rounded-lg font-medium transition-colors ${
+              step === 1 
+                ? 'text-gray-400 cursor-not-allowed' 
+                : 'text-blue-600 hover:bg-blue-50 border border-gray-300'
+            }`}
           >
             Previous
           </button>
@@ -727,7 +883,11 @@ export default function AddVehiclePage() {
           <button
             onClick={step === 4 ? handleSubmit : handleNext}
             disabled={loading}
-            className={`px-8 py-3 rounded-lg font-medium flex items-center gap-2 ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-[--color-primary-600] hover:bg-[--color-primary-700] text-black'}`}
+            className={`px-8 py-3 rounded-lg font-medium flex items-center gap-2 ${
+              loading 
+                ? 'bg-gray-400 cursor-not-allowed' 
+                : 'bg-blue-600 hover:bg-blue-700 text-white'
+            }`}
           >
             {loading ? (
               <>
